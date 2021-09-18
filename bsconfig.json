@@ -1,0 +1,31 @@
+{
+    "gentypeconfig": {
+        "language": "typescript",
+        "module": "es6",
+        "generatedFileExtension": ".gen.ts",
+        "debug": {
+            "all": false,
+            "basic": false
+        },
+        "shims": {
+            "Webworker": "Webworker"
+        }
+    },
+    "name": "zhiwei-daily-report-content-gen",
+    "sources": [
+        {
+            "dir": "src",
+            "subdirs": true
+        }
+    ],
+    "package-specs": [
+        {
+            "module": "es6-global",
+            "in-source": true
+        }
+    ],
+    "suffix": ".bs.js",
+    "bs-dependencies": [
+        "@ryyppy/rescript-promise"
+    ]
+}
