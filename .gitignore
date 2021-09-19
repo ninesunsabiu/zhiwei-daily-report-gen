@@ -6,3 +6,4 @@ transpiled
 /lib/
 .bsb.lock
 .merlin
+wrangler.toml
