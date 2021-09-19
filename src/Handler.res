@@ -4,8 +4,6 @@ type response
 type request
 @send external toJson: (request) => Js.Promise.t<Js.Json.t> = "json";
 
-// @send external flatMap: (array<'a>, (. 'a) => array<'b>) => array<'b> = "flatMap";
-
 type workFieldValueStr = string
 type workFieldValueEntity = { id: string, name: string }
 
@@ -23,7 +21,10 @@ type doneWork = {
     fields: array<workField>
 }
 
-type wordRecord = { code: string, name: string, scope: string }
+type predicateWork = {
+    content: string,
+    created: string
+}
 
 module BodyCodecs = {
     // 解析接收的 Json 包
@@ -82,13 +83,20 @@ module BodyCodecs = {
         Jzon.field("fields", Jzon.array(workField))
     )
 
+    let predicateWork = Jzon.object2(
+        ({ content, created }) => (content, created),
+        ((content, created)) => { content, created }->Ok,
+        Jzon.field("content", Jzon.string),
+        Jzon.field("created", Jzon.string)
+    )
+
     let body = Jzon.custom(
         // encoding
         tuple => {
             let (doneWorkArray, predicateArray) = tuple
             Js.Json.array([
                 doneWorkArray->Jzon.encodeWith(Jzon.array(doneWork)),
-                predicateArray->Jzon.encodeWith(Jzon.array(Jzon.string))
+                predicateArray->Jzon.encodeWith(Jzon.array(predicateWork))
             ])
         },
         // decoding
@@ -104,7 +112,7 @@ module BodyCodecs = {
                 | [doneWorkArray, predicateArray] => {
                     (
                         getDecodeResult(Jzon.array(doneWork), doneWorkArray),
-                        getDecodeResult(Jzon.array(Jzon.string), predicateArray)
+                        getDecodeResult(Jzon.array(predicateWork), predicateArray)
                     )->Ok
                 }
                 | _ => {
@@ -123,6 +131,29 @@ let handleRequest = req => {
     open Promise
     open Js
 
+    module DateUtil = {
+        let timeZone = 8.0
+
+        let transToCst = date => {
+            let offset = date->Date.getTimezoneOffset
+            Date.fromFloat(
+                (Date.getTime(date) +. offset *. 60.0 *. 1000.0 +. timeZone *. 3600.0 *. 1000.0)
+            )
+        }
+
+        let date = Date.make()
+
+        let today = date->transToCst
+
+        let todayIsMonday = today->Date.getDay === 1.0
+
+        let isToday = date => {
+            let predicateDateStr = date->transToCst->Date.toDateString
+            predicateDateStr === today->Date.toDateString
+        }
+
+    }
+
     let dealDoneWork = doneWorks => {
         let getValue = (value) => {
             switch value {
@@ -137,8 +168,9 @@ let handleRequest = req => {
             }
         }
 
-        doneWorks->Array2.map(
-            (doneWork) => {
+        doneWorks
+        ->Array2.mapi(
+            (doneWork, idx) => {
                 let findValueByFlag = flagKey => {
                     doneWork.fields
                         ->Array2.find(({ flag }) => flag === flagKey )
@@ -151,9 +183,24 @@ let handleRequest = req => {
                     "771ac1a5-fca5-4af2-b744-27b16e989b18ANY-TRAIT-ID"->findValueByFlag,
                     "78e0707c875f40a790a1387c8e64e54c"->findValueByFlag
                 )
-                { code, name, scope }
+                `${(idx + 1)->Int.toString}: ${scope} #${code} ${name}`
             }
         )
+        ->Array2.joinWith("\n")
+    }
+
+    let dealPredicateWork = predicateWorks => {
+        let targetContentRe = %re("/^猜测你今天可能要进行工作的卡片[:：]\\n\\n/")
+        predicateWorks
+        ->Array2.find(
+            ({ content, created }) => {
+                targetContentRe->Re.test_(content) && created->Date.fromString->DateUtil.isToday
+            }
+        )
+        ->Belt.Option.map(
+            ({ content }) => content->String2.replaceByRe(targetContentRe, "")
+        )
+        ->Belt.Option.getWithDefault("")
     }
 
     req
@@ -167,11 +214,18 @@ let handleRequest = req => {
         (val) => {
             switch val {
             | Ok(body) => {
-                let (doneWorks, _) = body;
-                doneWorks
-                ->dealDoneWork
-                ->Json.stringifyAny
-                ->Belt.Option.getWithDefault("test")
+                let (doneWorks, predicateWorks) = body;
+                // 这里竟然有中文转换的问题 不能直接使用双引号
+                let start = if DateUtil.todayIsMonday {
+                    `上周/周末`
+                } else {
+                    %raw(`"昨天"`)
+                }
+                `\
+${start}
+${doneWorks->dealDoneWork}
+今天:
+${predicateWorks->dealPredicateWork}`
             }
             | Error(errType) => {
                 Jzon.DecodingError.toString(errType)

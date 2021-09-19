@@ -1,2 +1,2 @@
-export type RescriptResponse = Response;
-export type ReRequest = Request;
+export type RescriptResponse = Response
+export type ReRequest = Request
