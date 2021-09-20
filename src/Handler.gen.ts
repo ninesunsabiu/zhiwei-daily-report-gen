@@ -5,15 +5,9 @@
 import * as HandlerBS__Es6Import from './Handler.bs'
 const HandlerBS: any = HandlerBS__Es6Import
 
-import type { ReRequest as $$request } from './shims/Webworker.shim'
+import type { t as Request_t } from './Request.gen'
 
-import type { RescriptResponse as $$response } from './shims/Webworker.shim'
+import type { t as Response_t } from './Response.gen'
 
-// tslint:disable-next-line:interface-over-type-literal
-export type response = $$response
-
-// tslint:disable-next-line:interface-over-type-literal
-export type request = $$request
-
-export const handleRequest: (_1: request) => Promise<response> =
+export const handleRequest: (_1: Request_t) => Promise<Response_t> =
   HandlerBS.handleRequest

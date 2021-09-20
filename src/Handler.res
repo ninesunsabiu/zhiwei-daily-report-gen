@@ -1,14 +1,9 @@
-type response 
-@new external ofResponse: Js.Nullable.t<string> => response = "Response";
-
-type request
-@send external toJson: (request) => Js.Promise.t<Js.Json.t> = "json";
-
 type workFieldValueStr = string
+type workFieldValueInt = int
 type workFieldValueEntity = { id: string, name: string }
 
 type workFieldValue = 
-    | ValueNumber(int)
+    | ValueNumber(workFieldValueInt)
 	| ValueStr(workFieldValueStr)
 	| ValueArray(array<workFieldValueEntity>)
 
@@ -126,7 +121,6 @@ module BodyCodecs = {
     )
 }
 
-
 let handleRequest = req => {
     open Promise
     open Js
@@ -194,7 +188,7 @@ let handleRequest = req => {
         predicateWorks
         ->Array2.find(
             ({ content, created }) => {
-                targetContentRe->Re.test_(content) && created->Date.fromString->DateUtil.isToday
+                content->Re.test_(targetContentRe, _) && created->Date.fromString->DateUtil.isToday
             }
         )
         ->Belt.Option.map(
@@ -204,7 +198,7 @@ let handleRequest = req => {
     }
 
     req
-    ->toJson
+    ->Request.toJson
     ->thenResolve(
         body => {
             body->Jzon.decodeWith(BodyCodecs.body)
@@ -233,9 +227,5 @@ ${predicateWorks->dealPredicateWork}`
             }
         }
     )
-    ->thenResolve(
-        (message) => {
-            message->Nullable.return->ofResponse
-        }
-    )
+    ->thenResolve(Response.make(~body=_, ()))
 }

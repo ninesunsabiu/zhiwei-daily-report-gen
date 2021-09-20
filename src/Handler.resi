@@ -1,9 +1,2 @@
-
-@genType.import(("./shims/Webworker.shim", "RescriptResponse"))
-type response 
-
-@genType.import(("./shims/Webworker.shim", "ReRequest"))
-type request
-
 @genType
-let handleRequest: request => Js.Promise.t<response>
+let handleRequest: Request.t => Js.Promise.t<Response.t>

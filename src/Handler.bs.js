@@ -299,8 +299,8 @@ function handleRequest(req) {
         dealPredicateWork(body[1])
       )
     })
-    .then(function (message) {
-      return new Response(message)
+    .then(function (__x) {
+      return new Response(__x, undefined)
     })
 }
 
