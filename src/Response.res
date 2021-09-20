@@ -9,4 +9,5 @@ type statusText = option<string>
 // @genType.import(("./shims/Webworker.shim", "ReResponseInit"))
 type responseInit = { headers, status, statusText }
 
-@new external make: (~body: string=?, ~init: responseInit=?, unit) => t = "Response";
+@new
+external make: (~body: string=?, ~init: responseInit=?, unit) => t = "Response";

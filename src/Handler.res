@@ -197,6 +197,8 @@ let handleRequest = req => {
         ->Belt.Option.getWithDefault("")
     }
 
+
+
     req
     ->Request.toJson
     ->thenResolve(
@@ -215,11 +217,7 @@ let handleRequest = req => {
                 } else {
                     %raw(`"昨天"`)
                 }
-                `\
-${start}
-${doneWorks->dealDoneWork}
-今天:
-${predicateWorks->dealPredicateWork}`
+                `${start}\n${doneWorks->dealDoneWork}\n今天:\n${predicateWorks->dealPredicateWork}\n求助:\n暂无`
             }
             | Error(errType) => {
                 Jzon.DecodingError.toString(errType)
@@ -227,5 +225,12 @@ ${predicateWorks->dealPredicateWork}`
             }
         }
     )
-    ->thenResolve(Response.make(~body=_, ()))
+    ->thenResolve(
+        (body) => {
+            let allowOriginKey = "Access-Control-Allow-Origin"
+            let origin = req.headers->Request.getHeader("Origin")->Belt.Option.getWithDefault("*")
+            let headers = Dict.fromArray([(allowOriginKey, origin)])
+            Response.make(~body, ~init={ headers, status: Some(200), statusText: Some("ok") }, ())
+        }
+    )
 }

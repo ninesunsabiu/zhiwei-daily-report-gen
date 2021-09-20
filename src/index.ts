@@ -1,5 +1,9 @@
-import { handleRequest } from './Handler.gen'
+import { handleRequest as postHandler } from './Handler.gen'
+import { handleRequest as optionHandler } from './OptionHandler.gen'
 
 addEventListener('fetch', (event) => {
-  event.respondWith(handleRequest(event.request))
+  const request = event.request
+  event.respondWith(
+    (request.method === 'OPTIONS' ? optionHandler : postHandler)(request),
+  )
 })
