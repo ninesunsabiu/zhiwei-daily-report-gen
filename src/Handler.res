@@ -21,6 +21,9 @@ type predicateWork = {
     created: string
 }
 
+
+type workRecord = { code: string, name: string, scope: string }
+
 module BodyCodecs = {
     // 解析接收的 Json 包
 
@@ -162,9 +165,15 @@ let handleRequest = req => {
             }
         }
 
+        module WorkRecordComp = unpack(
+            Belt.Id.comparableU(
+                ~cmp=(.left: workRecord, right: workRecord) => Pervasives.compare(left.code, right.code)
+            )
+        )
+
         doneWorks
-        ->Array2.mapi(
-            (doneWork, idx) => {
+        ->Array2.map(
+            (doneWork) => {
                 let findValueByFlag = flagKey => {
                     doneWork.fields
                         ->Array2.find(({ flag }) => flag === flagKey )
@@ -177,8 +186,13 @@ let handleRequest = req => {
                     "771ac1a5-fca5-4af2-b744-27b16e989b18ANY-TRAIT-ID"->findValueByFlag,
                     "78e0707c875f40a790a1387c8e64e54c"->findValueByFlag
                 )
-                `${(idx + 1)->Int.toString}: ${scope} #${code} ${name}`
+                { code, name, scope }
             }
+        )
+        ->Belt.Set.fromArray(~id=module(WorkRecordComp))
+        ->Belt.Set.toArray
+        ->Array2.mapi(
+            ({ code, name, scope }, idx) => `${(idx + 1)->Int.toString}: #${code} ${name} ${scope}`
         )
         ->Array2.joinWith("\n")
     }
@@ -197,15 +211,9 @@ let handleRequest = req => {
         ->Belt.Option.getWithDefault("")
     }
 
-
-
     req
     ->Request.toJson
-    ->thenResolve(
-        body => {
-            body->Jzon.decodeWith(BodyCodecs.body)
-        }
-    )
+    ->thenResolve(Jzon.decodeWith(_, BodyCodecs.body))
     ->thenResolve(
         (val) => {
             switch val {
@@ -227,9 +235,8 @@ let handleRequest = req => {
     )
     ->thenResolve(
         (body) => {
-            let allowOriginKey = "Access-Control-Allow-Origin"
             let origin = req.headers->Request.getHeader("Origin")->Belt.Option.getWithDefault("*")
-            let headers = Dict.fromArray([(allowOriginKey, origin)])
+            let headers = Dict.fromArray([("Access-Control-Allow-Origin", origin)])
             Response.make(~body, ~init={ headers, status: Some(200), statusText: Some("ok") }, ())
         }
     )
