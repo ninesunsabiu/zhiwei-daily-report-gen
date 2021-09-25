@@ -48,15 +48,12 @@ module BodyCodecs = {
     },
     jsonValue => {
       switch jsonValue->Js.Json.classify {
-      | Js.Json.JSONArray(_) => jsonValue
-        ->Jzon.decodeWith(workFieldValueArray)
-        ->Belt.Result.map(it => ValueArray(it))
-      | Js.Json.JSONString(_) => jsonValue
-        ->Jzon.decodeWith(workFieldValueStr)
-        ->Belt.Result.map(it => ValueStr(it))
-      | Js.Json.JSONNumber(_) => jsonValue
-        ->Jzon.decodeWith(Jzon.int)
-        ->Belt.Result.map(it => ValueNumber(it))
+      | Js.Json.JSONArray(_) =>
+        jsonValue->Jzon.decodeWith(workFieldValueArray)->Belt.Result.map(it => ValueArray(it))
+      | Js.Json.JSONString(_) =>
+        jsonValue->Jzon.decodeWith(workFieldValueStr)->Belt.Result.map(it => ValueStr(it))
+      | Js.Json.JSONNumber(_) =>
+        jsonValue->Jzon.decodeWith(Jzon.int)->Belt.Result.map(it => ValueNumber(it))
       | _ => ValueStr("")->Belt.Result.Ok
       }
     },
@@ -103,7 +100,8 @@ module BodyCodecs = {
             }
 
           switch array {
-          | [doneWorkArray, predicateArray] => (
+          | [doneWorkArray, predicateArray] =>
+            (
               getDecodeResult(Jzon.array(doneWork), doneWorkArray),
               getDecodeResult(Jzon.array(predicateWork), predicateArray),
             )->Ok
@@ -143,7 +141,8 @@ let handleRequest = req => {
   let dealDoneWork = doneWorks => {
     let getValue = value => {
       switch value {
-      | ValueArray(a) => switch a {
+      | ValueArray(a) =>
+        switch a {
         | [entity] => entity.name
         | _ => ""
         }
@@ -152,9 +151,14 @@ let handleRequest = req => {
       }
     }
 
-    module WorkRecordComp = unpack(
-      Belt.Id.comparableU(~cmp=(. left: workRecord, right: workRecord) =>
-        Pervasives.compare(left.code, right.code)
+    module WorkRecordHash = unpack(
+      Belt.Id.hashableU(
+        ~hash=(. entity) => {
+          entity.code->Belt.Int.fromString->Belt.Option.getWithDefault(1)
+        },
+        ~eq=(. {code}, {code: code2}) => {
+          code == code2
+        },
       )
     )
 
@@ -174,8 +178,8 @@ let handleRequest = req => {
       )
       {code: code, name: name, scope: scope}
     })
-    ->Belt.Set.fromArray(~id=module(WorkRecordComp))
-    ->Belt.Set.toArray
+    ->Belt.HashSet.fromArray(~id=module(WorkRecordHash))
+    ->Belt.HashSet.toArray
     ->Array2.mapi(({code, name, scope}, idx) =>
       `${(idx + 1)->Int.toString}: #${code} ${name} ${scope}`
     )
