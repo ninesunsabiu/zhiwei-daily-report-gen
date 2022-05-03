@@ -1,222 +1,262 @@
-type workFieldValueStr = string
-type workFieldValueInt = int
-type workFieldValueEntity = {id: string, name: string}
+module Error = {
+  @new
+  external make: 'a => exn = "Error"
 
-type workFieldValue =
-  | ValueNumber(workFieldValueInt)
-  | ValueStr(workFieldValueStr)
-  | ValueArray(array<workFieldValueEntity>)
-
-type workField = {
-  flag: string,
-  value: workFieldValue,
+  let toPromise = str => {
+    try {
+      raise(str->make)
+    } catch {
+    | _ as error => Promise.reject(error)
+    }
+  }
 }
 
-type doneWork = {fields: array<workField>}
-
-type predicateWork = {
-  content: string,
-  created: string,
+let mapToDecodeErrorPromise = err => {
+  err->Jzon.DecodingError.toString->Error.toPromise
 }
 
-type workRecord = {code: string, name: string, scope: string}
+module type Codecs = {}
 
-module BodyCodecs = {
-  // 解析接收的 Json 包
+module ErrorPromiseCodecs = (M: Codecs) => {
+  let mapToDecodeErrorPromise = err => {
+    err->Jzon.DecodingError.toString->Error.toPromise
+  }
+}
 
-  let workFieldValueStr = Jzon.string
+module CommitListResCodecs = {
+  type committer = {email: string}
+  type commit = {
+    shortMessage: string,
+    committer: committer,
+  }
+  type response = {commits: array<commit>}
+  type body = {response: response}
 
-  let workFieldValueEntity = Jzon.object2(
-    ({id, name}) => (id, name),
-    ((id, name)) => {id: id, name: name}->Ok,
-    Jzon.field("id", Jzon.string),
-    Jzon.field("name", Jzon.string),
+  open Jzon
+
+  let committerCodecs = object1(
+    ({email}) => email,
+    email => {email: email}->Ok,
+    field("Email", string),
   )
 
-  let workFieldValueArray = Jzon.array(workFieldValueEntity)
-
-  // 自定义的解析对象
-  // 针对一个 key 有多种 shape 进行定义
-  let workFieldValue = Jzon.custom(
-    value => {
-      let jsonValue = switch value {
-      | ValueNumber(i) => i->Jzon.encodeWith(Jzon.int)
-      | ValueStr(str) => str->Jzon.encodeWith(workFieldValueStr)
-      | ValueArray(array) => array->Jzon.encodeWith(workFieldValueArray)
-      }
-      jsonValue
-    },
-    jsonValue => {
-      switch jsonValue->Js.Json.classify {
-      | Js.Json.JSONArray(_) =>
-        jsonValue->Jzon.decodeWith(workFieldValueArray)->Belt.Result.map(it => ValueArray(it))
-      | Js.Json.JSONString(_) =>
-        jsonValue->Jzon.decodeWith(workFieldValueStr)->Belt.Result.map(it => ValueStr(it))
-      | Js.Json.JSONNumber(_) =>
-        jsonValue->Jzon.decodeWith(Jzon.int)->Belt.Result.map(it => ValueNumber(it))
-      | _ => ValueStr("")->Belt.Result.Ok
-      }
-    },
+  let commitCodecs = object2(
+    ({shortMessage, committer}) => (shortMessage, committer),
+    ((shortMessage, commiter)) => {shortMessage: shortMessage, committer: commiter}->Ok,
+    field("ShortMessage", string),
+    field("Commiter", committerCodecs),
   )
 
-  let workField = Jzon.object2(
-    ({flag, value}) => (flag, value),
-    ((flag, value)) => {flag: flag, value: value}->Ok,
-    Jzon.field("flag", Jzon.string),
-    // 对于传递过来的对象 如果对应的 key 不存在 可以使用 Jzon.default 进行 fallback
-    Jzon.field("value", workFieldValue)->Jzon.default(ValueStr("__unkonwn")),
-  )
-
-  let doneWork = Jzon.object1(
-    ({fields}) => fields,
-    fields => {fields: fields}->Ok,
-    Jzon.field("fields", Jzon.array(workField)),
-  )
-
-  let predicateWork = Jzon.object2(
-    ({content, created}) => (content, created),
-    ((content, created)) => {content: content, created: created}->Ok,
-    Jzon.field("content", Jzon.string),
-    Jzon.field("created", Jzon.string),
-  )
-
-  let body = Jzon.custom(
-    // encoding
-    tuple => {
-      let (doneWorkArray, predicateArray) = tuple
-      Js.Json.array([
-        doneWorkArray->Jzon.encodeWith(Jzon.array(doneWork)),
-        predicateArray->Jzon.encodeWith(Jzon.array(predicateWork)),
-      ])
-    },
-    // decoding
-    jsonValue => {
-      switch jsonValue->Js.Json.classify {
-      | Js.Json.JSONArray(array) => {
-          let getDecodeResult = (codec, json) =>
-            switch json->Jzon.decodeWith(codec) {
-            | Ok(ret) => ret
-            | Error(_) => []
-            }
-
-          switch array {
-          | [doneWorkArray, predicateArray] =>
-            (
-              getDecodeResult(Jzon.array(doneWork), doneWorkArray),
-              getDecodeResult(Jzon.array(predicateWork), predicateArray),
-            )->Ok
-          | _ => Error(#UnexpectedJsonValue([Field("body")], ""))
-          }
-        }
-      | _ => Error(#UnexpectedJsonValue([Field("body")], ""))
-      }
-    },
+  let body = object1(
+    ({response}) => response,
+    response => {response: response}->Ok,
+    field(
+      "Response",
+      object1(
+        ({commits}) => commits,
+        commits => {commits: commits}->Ok,
+        field("Commits", array(commitCodecs)),
+      ),
+    ),
   )
 }
 
-let handleRequest = req => {
+module ValueUnitListResCodecs = {
+  type valueUnit = {
+    id: string,
+    name: string,
+    displayCode: string,
+    currentStatusName: string,
+  }
+  type resultValue = array<valueUnit>
+  type body = {resultValue: resultValue}
+
+  open Jzon
+
+  let valueUnitCodecs = object4(
+    ({id, name, displayCode, currentStatusName}) => (id, name, displayCode, currentStatusName),
+    ((id, name, displayCode, currentStatusName)) =>
+      {id: id, name: name, displayCode: displayCode, currentStatusName: currentStatusName}->Ok,
+    field("id", string),
+    field("name", string),
+    field("displayCode", string),
+    field("currentStatusName", string),
+  )
+
+  let body = object1(
+    ({resultValue}) => resultValue,
+    resultValue => {resultValue: resultValue}->Ok,
+    field("resultValue", array(valueUnitCodecs)),
+  )
+}
+
+let handleRequest: RequestHandler.handleRequest = req => {
   open Promise
-  open Js
 
-  module DateUtil = {
-    let timeZone = 8.0
+  let searchParams = req.url->URL.make->URL.getSearchParams
 
-    let transToCst = date => {
-      let offset = date->Date.getTimezoneOffset
-      Date.fromFloat(Date.getTime(date) +. offset *. 60.0 *. 1000.0 +. timeZone *. 3600.0 *. 1000.0)
+  let resultOfFetchCommitsReqInit = {
+    open Belt
+
+    {
+      open URL.SearchParams
+      let p = (getParam(searchParams, ~key="startDate"), getParam(searchParams, ~key="endDate"))
+      switch p {
+      | (Some(start), Some(end)) => Ok(start, end)
+      | _ => Error(`请求参数不完整`)
+      }
     }
-
-    let date = Date.make()
-
-    let today = date->transToCst
-
-    let todayIsMonday = today->Date.getDay === 1.0
-
-    let isToday = date => {
-      let predicateDateStr = date->transToCst->Date.toDateString
-      predicateDateStr === today->Date.toDateString
-    }
-  }
-
-  let dealDoneWork = doneWorks => {
-    let getValue = value => {
-      switch value {
-      | ValueArray(a) =>
-        switch a {
-        | [entity] => entity.name
-        | _ => ""
+    ->Result.map(((start, end)) => {
+      let makeCommitQueryPayload = (~startDate: string, ~endDate: string) => {
+        {
+          "Action": "DescribeGitCommits",
+          "DepotId": 8968222,
+          "PageNumber": 1,
+          "PageSize": 200,
+          "Ref": "scrum",
+          "StartDate": startDate,
+          "EndDate": endDate,
         }
-      | ValueStr(c) => c
-      | ValueNumber(i) => i->String2.make
       }
+      makeCommitQueryPayload(~startDate=start, ~endDate=end)
+    })
+    ->Result.flatMap(payload => {
+      open Js.Json
+      stringifyAny(payload)->Belt.Option.mapWithDefault(Error(`转换为请求体失败`), it => Ok(
+        it,
+      ))
+    })
+    ->Result.map(payload => {
+      open Js.Dict
+      open Fetch
+      RequestInit.make(
+        ~method=#POST,
+        ~body=payload,
+        ~headers=fromArray([
+          ("Authorization", `token ${GVar.token}`),
+          ("Accept", "application/json"),
+        ]),
+        (),
+      )
+    })
+  }
+
+  let promiseOfFetchCommits = {
+    switch resultOfFetchCommitsReqInit {
+    | Ok(init) => {
+        open Fetch
+        init->fetchOfURL(~input="https://e.coding.net/open-api", ~init=_, ())
+      }
+    | Error(message) => message->Error.toPromise
     }
-
-    module WorkRecordHash = unpack(
-      Belt.Id.hashableU(
-        ~hash=(. entity) => {
-          entity.code->Belt.Int.fromString->Belt.Option.getWithDefault(1)
-        },
-        ~eq=(. {code}, {code: code2}) => {
-          code == code2
-        },
-      )
-    )
-
-    doneWorks
-    ->Array2.map(doneWork => {
-      let findValueByFlag = flagKey => {
-        doneWork.fields
-        ->Array2.find(({flag}) => flag === flagKey)
-        ->Belt.Option.map(({value}) => getValue(value))
-        ->Belt.Option.getWithDefault("")
-      }
-      // 如果 tuple 也能使用类似 map 的方法就好了
-      let (code, name, scope) = (
-        "sourceField4"->findValueByFlag,
-        "771ac1a5-fca5-4af2-b744-27b16e989b18ANY-TRAIT-ID"->findValueByFlag,
-        "78e0707c875f40a790a1387c8e64e54c"->findValueByFlag,
-      )
-      {code: code, name: name, scope: scope}
-    })
-    ->Belt.HashSet.fromArray(~id=module(WorkRecordHash))
-    ->Belt.HashSet.toArray
-    ->Array2.mapi(({code, name, scope}, idx) =>
-      `${(idx + 1)->Int.toString}: #${code} ${name} ${scope}`
-    )
-    ->Array2.joinWith("\n")
   }
 
-  let dealPredicateWork = predicateWorks => {
-    let targetContentRe = %re("/^猜测你今天可能要进行工作的卡片[:：]\\n\\n/")
-    predicateWorks
-    ->Array2.find(({content, created}) => {
-      content->Re.test_(targetContentRe, _) && created->Date.fromString->DateUtil.isToday
-    })
-    ->Belt.Option.map(({content}) => content->String2.replaceByRe(targetContentRe, ""))
-    ->Belt.Option.getWithDefault("")
-  }
-
-  req
-  ->Request.toJson
-  ->thenResolve(Jzon.decodeWith(_, BodyCodecs.body))
-  ->thenResolve(val => {
-    switch val {
-    | Ok(body) => {
-        let (doneWorks, predicateWorks) = body
-        // 这里竟然有中文转换的问题 不能直接使用双引号
-        let start = if DateUtil.todayIsMonday {
-          `上周/周末`
-        } else {
-          %raw(`"昨天"`)
-        }
-        `${start}\n${doneWorks->dealDoneWork}\n今天:\n${predicateWorks->dealPredicateWork}\n求助:\n暂无`
+  promiseOfFetchCommits
+  ->then(Fetch.toJson)
+  ->thenResolve(Jzon.decodeWith(_, CommitListResCodecs.body))
+  ->then(it => {
+    switch it {
+    | Ok(ret) => ret.response.commits->resolve
+    | Error(err) => {
+        // 尝试一下 Module Function
+        module T = ErrorPromiseCodecs(CommitListResCodecs)
+        let {mapToDecodeErrorPromise} = module(T)
+        err->mapToDecodeErrorPromise
       }
-    | Error(errType) => Jzon.DecodingError.toString(errType)
     }
   })
-  ->thenResolve(body => {
+  ->thenResolve({
+    let user = searchParams->URL.SearchParams.getParam(~key="user")
+    switch user {
+    | Some(i) => Js.Array2.filter(_, it => Js.String2.startsWith(it.committer.email, i))
+    | None => _ => []
+    }
+  })
+  ->thenResolve(Js.Array2.map(_, it => it.shortMessage))
+  ->thenResolve(commits =>
+    commits
+    ->Js.Array2.map(it => {
+      let codeRe = %re("/^#(?<code>\d+)\s/")
+      switch Js.Re.exec_(codeRe, it) {
+      | Some(r) => {
+          let result = Js.Re.captures(r)->Js.Array.unsafe_get(1)
+          Js.Nullable.toOption(result)
+        }
+      | None => None
+      }
+    })
+    ->Js.Array2.reduceRight((acc, it) => {
+      switch it {
+      | Some(code) =>
+        if Belt.List.has(acc, code, (a, b) => a == b) {
+          acc
+        } else {
+          list{code, ...acc}
+        }
+      | _ => acc
+      }
+    }, list{})
+  )
+  ->then(codeList => {
+    open Js
+    open Fetch
+    let codeArray = codeList->Belt.List.toArray
+    let payload = {"codes": codeArray, "orgId": "771ac1a5-fca5-4af2-b744-27b16e989b18"}
+    fetchOfURL(
+      ~input="https://tkb.agilean.cn/openapi/api/v1/value-units/filter?by=code",
+      ~init=RequestInit.make(
+        ~method=#POST,
+        ~headers=Dict.fromArray([("Content-Type", "application/json")]),
+        ~body=Json.stringifyAny(payload)->Belt.Option.getWithDefault(""),
+        (),
+      ),
+      (),
+    )
+  })
+  ->then(Fetch.toJson)
+  ->thenResolve(Jzon.decodeWith(_, ValueUnitListResCodecs.body))
+  ->then(it => {
+    switch it {
+    | Ok(ret) => ret.resultValue->resolve
+    | Error(err) => err->mapToDecodeErrorPromise
+    }
+  })
+  ->thenResolve(
+    Js.Array2.mapi(_, ({name, displayCode, currentStatusName}, idx) => {
+      `${(idx + 1)
+          ->Js.Int.toString}. #${displayCode} ${name} 卡片状态: 「${currentStatusName}」`
+    }),
+  )
+  ->thenResolve(workArray => {
+    open Js
     let origin = req.headers->Request.getHeader("Origin")->Belt.Option.getWithDefault("*")
-    let headers = Dict.fromArray([("Access-Control-Allow-Origin", origin)])
-    Response.make(~body, ~init={headers: headers, status: Some(200), statusText: Some("ok")}, ())
+    let headers = Dict.fromArray([
+      ("Access-Control-Allow-Origin", origin),
+      ("Content-Type", "application/json"),
+    ])
+    Response.make(
+      ~body=Json.stringify(
+        Json.object_(
+          Dict.fromArray([
+            ("result", 0.->Json.number),
+            ("resultValue", workArray->Json.stringArray),
+          ]),
+        ),
+      ),
+      ~init={headers: headers, status: Some(200), statusText: Some("ok")},
+      (),
+    )
+  })
+  ->catch(error => {
+    let fallbackMsg = `未知错误`
+    let message = switch error->Js.Exn.asJsExn {
+    | Some(exn) => Belt.Option.getWithDefault(exn->Js.Exn.message, fallbackMsg)
+    | _ => fallbackMsg
+    }
+    Response.make(
+      ~body=message,
+      ~init={headers: Js.Dict.empty(), status: Some(500), statusText: None},
+      (),
+    )->resolve
   })
 }

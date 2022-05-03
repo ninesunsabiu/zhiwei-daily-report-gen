@@ -5,9 +5,7 @@
 import * as HandlerBS__Es6Import from './Handler.bs'
 const HandlerBS: any = HandlerBS__Es6Import
 
-import type { t as Request_t } from './Request.gen'
+import type { handleRequest as RequestHandler_handleRequest } from './RequestHandler.gen'
 
-import type { t as Response_t } from './Response.gen'
-
-export const handleRequest: (_1: Request_t) => Promise<Response_t> =
+export const handleRequest: RequestHandler_handleRequest =
   HandlerBS.handleRequest

@@ -4,7 +4,7 @@ type headers = Js.Dict.t<string>
 external getHeader: (headers, string) => option<string> = "get"
 
 @genType.import(("./shims/Webworker.shim", "ReRequest"))
-type t = {headers: headers}
+type t = {headers: headers, url: string}
 
 @send
 external toJson: t => Js.Promise.t<Js.Json.t> = "json"
